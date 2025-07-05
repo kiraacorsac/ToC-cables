@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class BasicCableMeshGenerator : AbstractCableMeshGenerator
+public class CreationCableMeshGenerator : AbstractCableMeshGenerator
 {
 
     public float radius = 0.05f;

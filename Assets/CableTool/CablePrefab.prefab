@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 9106227243896616899}
   - component: {fileID: 3390500504726704871}
   - component: {fileID: 912075175611215541}
+  - component: {fileID: 7110579204577745168}
   - component: {fileID: 8528267767264987615}
   m_Layer: 0
   m_Name: CablePrefab
@@ -62,7 +63,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10302, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: -876546973899608171, guid: 93ec65a10141cb84191d58b9b7865b22, type: 3}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -84,6 +85,20 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &7110579204577745168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4691652608445397336}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 085de86128741ff46b9b4a40a512b440, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  radius: 0.05
+  radialSegments: 8
 --- !u!114 &8528267767264987615
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -96,6 +111,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 18b478a6f79326048b59aeb14fae816e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  points: []
-  radius: 0.05
-  radialSegments: 8
+  points:
+  - {x: 4.3395205, y: 1.4785277, z: -2.0300002}
+  - {x: 4.6430006, y: 1.4785277, z: -2.0300002}
+  - {x: 4.6430006, y: 1.4785277, z: -2.79}
+  - {x: 4.48, y: 1.4785277, z: -2.79}
+  - {x: 4.48, y: 1.4785277, z: -3.3728704}
+  - {x: 4.48, y: 1.242443, z: -3.3728704}
+  - {x: 4.48, y: 0.13709228, z: -3.3728704}
