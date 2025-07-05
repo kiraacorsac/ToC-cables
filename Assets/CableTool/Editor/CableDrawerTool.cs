@@ -127,7 +127,7 @@ public class CableDrawerTool : EditorTool
             Handles.DrawWireDisc(hit.point, hit.normal, 0.1f);
         }
 
-        Debug.Log($"Hit Point: {hit.point}, Hit Normal: {hit.normal}");
+        // Debug.Log($"Hit Point: {hit.point}, Hit Normal: {hit.normal}");
 
         var adjustedPoint = cable.transform.TransformPoint(ComputeNextPossiblePoint(hit.point, hit.normal));
         using (new Handles.DrawingScope(Color.green))
@@ -147,7 +147,6 @@ public class CableDrawerTool : EditorTool
         {
             Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
             RaycastHit hit;
-            Vector3 newPoint;
             if (!Physics.Raycast(ray, out hit))
             {
                 Debug.LogWarning("No valid point hit to add to the cable.");

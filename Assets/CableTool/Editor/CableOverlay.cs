@@ -1,11 +1,6 @@
 using UnityEditor;
 using UnityEditor.Overlays;
-using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEditor.Toolbars;
-using UnityEngine;
-using System;
-
 [Overlay(typeof(SceneView), "Cable Tool Overlay")]
 public class CableOverlay : Overlay
 {
@@ -33,7 +28,12 @@ public class CableOverlay : Overlay
         };
         root.Add(forceRecalculateButton);
 
-
+        var flipCableButton = new Button(() => FlipCable(cable))
+        {
+            text = "Flip Cable",
+            tooltip = "Reverse the order of points in the cable."
+        };
+        root.Add(flipCableButton);
 
         return root;
     }
@@ -56,6 +56,16 @@ public class CableOverlay : Overlay
     {
         if (cable != null)
         {
+            cable.GenerateMesh();
+        }
+    }
+
+    private static void FlipCable(Cable cable)
+    {
+        if (cable != null && cable.points.Count > 0)
+        {
+            Undo.RecordObject(cable, "Flip Cable Points");
+            cable.points.Reverse();
             cable.GenerateMesh();
         }
     }

@@ -1,11 +1,15 @@
 using System.Collections.Generic;
+using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class CreationCableMeshGenerator : AbstractCableMeshGenerator
 {
 
-    public float radius = 0.05f;
-    public int radialSegments = 8;
+    public bool upsideDown = false;
+    public float scale = 1f;
+    public float width = 1f;
+    public float height = 1f;
 
     private GameObject reminderTextObj;
 
@@ -37,49 +41,137 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
             return;
         }
 
-        var verts = new List<Vector3>();
-        var tris = new List<int>();
-        var uvs = new List<Vector2>();
+
+        Geometry geometry = new Geometry();
+
 
         for (int i = 0; i < points.Count; i++)
         {
-            Vector3 forward = i < points.Count - 1 ? points[i + 1] - points[i] : points[i] - points[i - 1];
-            Quaternion rotation = Quaternion.LookRotation(forward == Vector3.zero ? Vector3.forward : forward);
-            for (int j = 0; j < radialSegments; j++)
-            {
-                float angle = j * Mathf.PI * 2f / radialSegments;
-                Vector3 circle = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0) * radius;
-                verts.Add(points[i] + rotation * circle);
-                uvs.Add(new Vector2((float)j / radialSegments, (float)i / (points.Count - 1)));
-            }
-        }
 
-        for (int i = 0; i < points.Count - 1; i++)
+            Vector3 forward;
+            if (i < points.Count - 1)
+            {
+                forward = (points[i + 1] - points[i]).normalized;
+            }
+            else
+            {
+                forward = (points[i] - points[i - 1]).normalized;
+            }
+            int vertexOffset = geometry.Vertices.Count;
+
+            foreach (var vertex in GetCrosscutVertices(points[i], forward))
+            {
+                geometry.AddVertex(vertex);
+            }
+            if (i < points.Count - 1)
+            {
+                foreach (var vertex in GetCrosscutVertices(points[i + 1], forward))
+                {
+                    geometry.AddVertex(vertex);
+                }
+                foreach (var triangle in GetCrosscutTriangles())
+                {
+                    geometry.AddTriangle(triangle.x, triangle.y, triangle.z, vertexOffset);
+                }
+            }
+
+
+        }
+        geometry.IncrementMeshIndex();
+
+
+        Debug.Log($"Generated {geometry.Vertices.Count} vertices and {geometry.Triangles.Values.Sum(list => list.Count)} triangles in {geometry.LastMeshIndex} meshes for cable '{name}'.");
+        mesh.SetVertices(geometry.Vertices);
+
+        foreach (var triangle in geometry.Triangles)
         {
-            for (int j = 0; j < radialSegments; j++)
-            {
-                int current = i * radialSegments + j;
-                int next = current + radialSegments;
-                int nextJ = (j + 1) % radialSegments;
-
-                int currentNext = i * radialSegments + nextJ;
-                int nextNext = currentNext + radialSegments;
-
-                tris.Add(current);
-                tris.Add(next);
-                tris.Add(nextNext);
-
-                tris.Add(current);
-                tris.Add(nextNext);
-                tris.Add(currentNext);
-            }
+            mesh.SetTriangles(triangle.Value, triangle.Key);
         }
-
-        mesh.SetVertices(verts);
-        mesh.SetTriangles(tris, 0);
-        mesh.SetUVs(0, uvs);
+        // mesh.SetUVs(0, uvs);
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
+    }
+
+
+    private List<Vector3> GetCrosscutVertices(Vector3 point, Vector3 forward)
+    {
+        Vector3 up = Vector3.up;
+        Vector3 right = Vector3.Cross(forward, up).normalized;
+        Vector3 localUp = -Vector3.Cross(forward, right).normalized;
+        if (upsideDown)
+        {
+            localUp = -localUp;
+        }
+
+        var face = new List<Vector3>
+        {
+            // see concept blend file for the source of magic numbers
+            point + 0.052868f * width * right,
+            point + 0.031255f * width * right + 0.027186f * height * localUp,
+            // TODO: the middle part :>
+            point + 0.031255f * width * -right + 0.027186f * height * localUp,
+            point + 0.052868f * width * -right
+        };
+
+        return face;
+    }
+
+    private List<Vector3Int> GetCrosscutTriangles()
+    {
+        return new List<Vector3Int>
+        {
+            new Vector3Int(0, 4, 1),
+            new Vector3Int(1, 4, 5),
+            new Vector3Int(1, 5, 2),
+            new Vector3Int(2, 5, 6),
+            new Vector3Int(2, 6, 3),
+            new Vector3Int(3, 6, 7),
+        };
+    }
+
+
+    private void AddDebugMeshToGeometry(Geometry geometry, Vector3 point, Vector3 forward)
+    {
+        var triangleOffset = geometry.Vertices.Count;
+        var debugFace = GetDebugFaceVertices(point, forward);
+        foreach (var vertex in debugFace)
+        {
+            geometry.AddVertex(vertex * scale);
+        }
+        var debugTriangles = GetDebugFaceTriangles();
+        foreach (var triangle in debugTriangles)
+        {
+            geometry.AddTriangle(triangle.x, triangle.y, triangle.z, triangleOffset);
+        }
+    }
+
+    private List<Vector3> GetDebugFaceVertices(Vector3 point, Vector3 forward)
+    {
+        Vector3 up = Vector3.up;
+        Vector3 right = Vector3.Cross(forward, up).normalized;
+        Vector3 localUp = -Vector3.Cross(forward, right).normalized;
+        if (upsideDown)
+        {
+            localUp = -localUp;
+        }
+
+        var face = new List<Vector3>
+        {
+            point + localUp * height,
+            point + right * width + localUp * height,
+            point + right * width,
+            point
+        };
+        return face;
+    }
+
+    private List<Vector3Int> GetDebugFaceTriangles()
+    {
+        return new List<Vector3Int>
+        {
+            new Vector3Int(0, 1, 2),
+            new Vector3Int(0, 2, 3)
+        };
     }
 }
