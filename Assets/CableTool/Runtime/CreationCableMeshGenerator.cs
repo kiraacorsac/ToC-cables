@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Unity.VisualScripting;
@@ -11,32 +12,15 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
     public float width = 1f;
     public float height = 1f;
 
-    private GameObject reminderTextObj;
 
-
-    override public void GenerateMesh(List<Vector3> points)
+    override public void GenerateMesh(List<Cable.CablePoint> points)
     {
         Mesh mesh = new Mesh();
 
-        if (reminderTextObj != null)
-        {
-            DestroyImmediate(reminderTextObj);
-            reminderTextObj = null;
-        }
+
         if (points.Count < 2)
         {
-            Debug.LogWarning("Not enough points to generate cable mesh. At least 2 points are required.");
-
-
-            reminderTextObj = new GameObject("CableReminderText");
-            reminderTextObj.transform.SetParent(transform, false);
-            reminderTextObj.transform.localPosition = Vector3.zero;
-            var textMesh = reminderTextObj.AddComponent<TextMesh>();
-            textMesh.text = $"Cable '{name}' is broken :<";
-            textMesh.characterSize = 0.3f;
-            textMesh.color = Color.magenta;
-            textMesh.anchor = TextAnchor.MiddleCenter;
-            textMesh.alignment = TextAlignment.Center;
+            Debug.LogError("Not enough points to generate cable mesh for . At least 2 points are required.");
             GetComponent<MeshFilter>().mesh = null;
             return;
         }
@@ -51,21 +35,22 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
             Vector3 forward;
             if (i < points.Count - 1)
             {
-                forward = (points[i + 1] - points[i]).normalized;
+                forward = (points[i + 1].position - points[i].position).normalized;
             }
             else
             {
-                forward = (points[i] - points[i - 1]).normalized;
+                forward = (points[i].position - points[i - 1].position).normalized;
             }
             int vertexOffset = geometry.Vertices.Count;
 
-            foreach (var vertex in GetCrosscutVertices(points[i], forward))
+            foreach (var vertex in GetCrosscutVertices(points[i].position, points[i].normal, forward))
             {
                 geometry.AddVertex(vertex);
             }
             if (i < points.Count - 1)
             {
-                foreach (var vertex in GetCrosscutVertices(points[i + 1], forward))
+                // take the previous point's normal as the "up" vector, so we don't get twisting
+                foreach (var vertex in GetCrosscutVertices(points[i + 1].position, points[i].normal, forward))
                 {
                     geometry.AddVertex(vertex);
                 }
@@ -94,9 +79,9 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
     }
 
 
-    private List<Vector3> GetCrosscutVertices(Vector3 point, Vector3 forward)
+    private List<Vector3> GetCrosscutVertices(Vector3 point, Vector3 normal, Vector3 forward)
     {
-        Vector3 up = Vector3.up;
+        Vector3 up = normal.normalized;
         Vector3 right = Vector3.Cross(forward, up).normalized;
         Vector3 localUp = -Vector3.Cross(forward, right).normalized;
         if (upsideDown)

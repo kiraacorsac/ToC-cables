@@ -1,19 +1,24 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(AbstractCableMeshGenerator))]
 public class Cable : MonoBehaviour
 {
-    public List<Vector3> points = new();
-    public void AddPoint(Vector3 point)
+    //point and its corresponding normal/local up vector
+    [Serializable]
+    public struct CablePoint
     {
-        points.Add(transform.InverseTransformPoint(point));
-        GenerateMesh();
+        public Vector3 position;
+        public Vector3 normal;
     }
+
+    [SerializeField]
+    public List<CablePoint> Points = new();
 
     public void GenerateMesh()
     {
         AbstractCableMeshGenerator meshGenerator = GetComponent<AbstractCableMeshGenerator>();
-        meshGenerator.GenerateMesh(points);
+        meshGenerator.GenerateMesh(Points);
     }
 }

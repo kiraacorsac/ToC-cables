@@ -61,7 +61,9 @@ public class CableDrawerTool : EditorTool
 
     public override void OnToolGUI(EditorWindow window)
     {
-        if (!cable)
+        cable = Selection.activeGameObject?.GetComponent<Cable>();
+
+        if (cable == null)
         {
             Debug.LogWarning("No Cable component selected. Please select a GameObject with a Cable component.");
             return;
@@ -79,12 +81,12 @@ public class CableDrawerTool : EditorTool
     /// Draws position handles for each cable point in the Scene view.
     private void DrawCableHandles()
     {
-        for (int i = 0; i < cable.points.Count; i++)
+        for (int i = 0; i < cable.Points.Count; i++)
         {
 
 
             EditorGUI.BeginChangeCheck();
-            Vector3 worldPoint = cable.transform.TransformPoint(cable.points[i]);
+            Vector3 worldPoint = cable.transform.TransformPoint(cable.Points[i].position);
             Vector3 newWorldPoint = Handles.FreeMoveHandle(
                 worldPoint,
                 HandleUtility.GetHandleSize(worldPoint) * 0.2f,
@@ -95,7 +97,7 @@ public class CableDrawerTool : EditorTool
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(cable, "Move Cable Point");
-                cable.points[i] = cable.transform.InverseTransformPoint(newWorldPoint);
+                cable.Points[i] = new Cable.CablePoint { position = cable.transform.InverseTransformPoint(newWorldPoint), normal = cable.Points[i].normal };
                 cable.GenerateMesh();
                 EditorUtility.SetDirty(cable);
             }
@@ -120,21 +122,23 @@ public class CableDrawerTool : EditorTool
 
         using (new Handles.DrawingScope(Color.yellow))
         {
-            if (cable.points.Count > 0)
+            if (cable.Points.Count > 0)
             {
-                Handles.DrawLine(cable.transform.TransformPoint(cable.points.Last()), hit.point);
+                Handles.DrawLine(cable.transform.TransformPoint(cable.Points.Last().position), hit.point);
             }
             Handles.DrawWireDisc(hit.point, hit.normal, 0.1f);
         }
 
         // Debug.Log($"Hit Point: {hit.point}, Hit Normal: {hit.normal}");
 
-        var adjustedPoint = cable.transform.TransformPoint(ComputeNextPossiblePoint(hit.point, hit.normal));
+        var adjustedPoint = cable.transform.TransformPoint(
+            ComputeNextPossiblePoint(hit.point, hit.normal, Event.current.shift)
+        );
         using (new Handles.DrawingScope(Color.green))
         {
-            if (cable.points.Count > 0)
+            if (cable.Points.Count > 0)
             {
-                Handles.DrawLine(cable.transform.TransformPoint(cable.points.Last()), adjustedPoint);
+                Handles.DrawLine(cable.transform.TransformPoint(cable.Points.Last().position), adjustedPoint);
             }
             Handles.DrawWireDisc(adjustedPoint, hit.normal, 0.1f);
         }
@@ -146,8 +150,7 @@ public class CableDrawerTool : EditorTool
         if (e.type == EventType.MouseUp && e.button == 0 && !e.alt)
         {
             Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            RaycastHit hit;
-            if (!Physics.Raycast(ray, out hit))
+            if (!Physics.Raycast(ray, out RaycastHit hit))
             {
                 Debug.LogWarning("No valid point hit to add to the cable.");
                 e.Use();
@@ -155,28 +158,36 @@ public class CableDrawerTool : EditorTool
             }
 
             Undo.RecordObject(cable, "Add Cable Point");
-            cable.points.Add(ComputeNextPossiblePoint(hit.point, hit.normal));
+            cable.Points.Add(new Cable.CablePoint
+            {
+                position = ComputeNextPossiblePoint(hit.point, hit.normal, Event.current.shift),
+                normal = hit.normal
+            });
             cable.GenerateMesh();
             EditorUtility.SetDirty(cable);
             e.Use();
         }
     }
 
-    private Vector3 ComputeNextPossiblePoint(Vector3 targetPoint, Vector3 targetNormal)
+    private Vector3 ComputeNextPossiblePoint(Vector3 targetPoint, Vector3 targetNormal, bool snapNormal)
     {
 
-        if (cable.points.Count > 0)
+        if (cable.Points.Count > 0)
         {
             // snap to one of the axis, where distance is the largest
-            Vector3 lastPoint = cable.transform.TransformPoint(cable.points.Last());
+            Vector3 lastPoint = cable.transform.TransformPoint(cable.Points.Last().position);
             Vector3 distance = lastPoint - targetPoint;
             // Debug.Log($"Last Point: {lastPoint}, Target Point: {targetPoint}, Distance: {distance}");
             int snapDirectionAxis = GetLargestComponentIndex(distance);
             // Debug.Log($"Snap Direction Axis: {snapDirectionAxis} - ({distance[snapDirectionAxis]})");
             Vector3 snappedPoint = lastPoint;
             snappedPoint[snapDirectionAxis] = targetPoint[snapDirectionAxis];
-            int snapIgnoreAxis = GetLargestComponentIndex(targetNormal);
-            snappedPoint[snapIgnoreAxis] = targetPoint[snapIgnoreAxis];
+            if (snapNormal)
+            {
+                // snap the normal to the axis where the distance is largest
+                int snapNormalAxis = GetLargestComponentIndex(targetNormal);
+                snappedPoint[snapNormalAxis] = targetPoint[snapNormalAxis];
+            }
 
             return cable.transform.InverseTransformPoint(snappedPoint);
         }
@@ -191,14 +202,21 @@ public class CableDrawerTool : EditorTool
 
 
         if (absX >= absY && absX >= absZ)
+        {
             return 0; // X
+        }
         else if (absY >= absX && absY >= absZ)
+        {
             return 1; // Y
+        }
         else
+        {
             return 2; // Z
+        }
     }
     private void OnUndoRedo()
     {
+        Debug.Log("Undo/Redo performed, regenerating cable mesh.");
         if (cable != null)
         {
             cable.GenerateMesh();
