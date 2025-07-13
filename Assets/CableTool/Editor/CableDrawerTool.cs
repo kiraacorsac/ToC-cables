@@ -140,12 +140,13 @@ public class CableDrawerTool : EditorTool
                 0f
             );
 
+            // Handles.Label(newMid + Vector3.up * 0.1f, $"{side}", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 12, normal = { textColor = Color.black } });
+
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(cable, "Move Cable Segment");
                 Vector3 offset = newMid - mid;
-                offset -= Vector3.Project(offset, forward);
-
+                offset -= Vector3.Project(offset, forward); //only allow movement in the side direction
 
                 Debug.Log($"Moving segment {i} from {mid} to {newMid}, offset: {offset}");
 
@@ -297,9 +298,31 @@ public class CableDrawerTool : EditorTool
             }
 
             Undo.RecordObject(cable, "Add Cable Point");
+
+            var newPosition = ComputeNextPossiblePoint(hit.point, hit.normal, Event.current.shift);
+            Debug.Log($"Adding new point at {newPosition} with normal {hit.normal}");
+
+            if (cable.Points.Count > 2)
+            {
+                Vector3 lastPoint = cable.transform.TransformPoint(cable.Points.Last().position);
+                Vector3 secondLastPoint = cable.transform.TransformPoint(cable.Points[cable.Points.Count - 2].position);
+                Vector3 newWorldPosition = cable.transform.TransformPoint(newPosition);
+                Vector3 prevForward = (lastPoint - secondLastPoint).normalized;
+                Vector3 forward = (newWorldPosition - lastPoint).normalized;
+
+                Debug.Log($"Last Point: {lastPoint}, Second Last Point: {secondLastPoint}, New Position: {newPosition}");
+                Debug.Log($"Previous Forward: {prevForward}, New Forward: {forward}");
+                if (Mathf.Abs(Math.Abs(Vector3.Dot(forward, prevForward)) - 1.0f) < 1e-4f)
+                {
+                    //last point is the same direction as the previous segment, remove the last point so we don't have multiple points in the same direction
+                    Debug.Log("Last point is in the same direction as the previous segment, removing last point.");
+                    cable.Points.RemoveAt(cable.Points.Count - 1);
+                }
+            }
+
             cable.Points.Add(new Cable.CablePoint
             {
-                position = ComputeNextPossiblePoint(hit.point, hit.normal, Event.current.shift),
+                position = newPosition,
                 normal = hit.normal
             });
             cable.GenerateMesh();
