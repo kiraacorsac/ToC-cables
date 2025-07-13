@@ -82,16 +82,52 @@ public class CableDrawerTool : EditorTool
 
     private void DrawCablePointHandles()
     {
-        for (int i = 0; i < cable.Points.Count; i++)
+        for (int i = 1; i < cable.Points.Count; i++)
         {
             Vector3 worldPoint = cable.transform.TransformPoint(cable.Points[i].position);
-            Vector3 newWorldPoint = Handles.FreeMoveHandle(
+            Handles.FreeMoveHandle(
                 worldPoint,
-                HandleUtility.GetHandleSize(worldPoint) * 0.1f,
+                HandleUtility.GetHandleSize(worldPoint) * 0.05f,
                 Vector3.zero,
                 Handles.SphereHandleCap
             );
             Handles.Label(worldPoint + Vector3.up * 0.1f, $"#{i}", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 12, normal = { textColor = Color.black } });
+        }
+        // Draw the first point handle separately
+        if (cable.Points.Count < 1)
+            return;
+
+        Vector3 worldPointFirst = cable.transform.TransformPoint(cable.Points[0].position);
+        EditorGUI.BeginChangeCheck();
+        Vector3 newWorldPoint = Handles.FreeMoveHandle(
+            worldPointFirst,
+            HandleUtility.GetHandleSize(worldPointFirst) * 0.3f,
+            Vector3.zero,
+            Handles.SphereHandleCap
+        );
+        Handles.Label(worldPointFirst + Vector3.up * 0.1f, "Start", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 12, normal = { textColor = Color.black } });
+
+        if (cable.Points.Count < 2)
+            return;
+
+        Vector3 worldPointSecond = cable.transform.TransformPoint(cable.Points[1].position);
+        Vector3 segmentForward = (worldPointSecond - worldPointFirst).normalized;
+
+
+        if (EditorGUI.EndChangeCheck())
+        {
+            Undo.RecordObject(cable, "Move Cable Point");
+            // Only allow movement in the segmentForward direction
+            Vector3 offset = newWorldPoint - worldPointFirst;
+            offset = Vector3.Project(offset, segmentForward);
+            Vector3 constrainedWorldPoint = worldPointFirst + offset;
+            cable.Points[0] = new Cable.CablePoint
+            {
+                position = cable.transform.InverseTransformPoint(constrainedWorldPoint),
+                normal = cable.Points[0].normal
+            };
+            cable.GenerateMesh();
+            EditorUtility.SetDirty(cable);
         }
     }
 
@@ -136,7 +172,7 @@ public class CableDrawerTool : EditorTool
                 forward,
                 side,
                 HandleUtility.GetHandleSize(mid) * 0.1f,
-                Handles.CircleHandleCap,
+                Handles.RectangleHandleCap,
                 0f
             );
 
