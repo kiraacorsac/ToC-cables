@@ -1,14 +1,15 @@
+using System;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.EditorTools;
 using UnityEditor.Overlays;
 using UnityEngine;
+using System.Collections.Generic;
 
 [EditorTool("Cable Drawer")]
 public class CableDrawerTool : EditorTool
 {
     Cable cable;
-
     public override void OnActivated()
     {
         base.OnActivated();
@@ -69,7 +70,8 @@ public class CableDrawerTool : EditorTool
             return;
         }
 
-        DrawCableHandles();
+        DrawCablePointHandles();
+        DrawCableSegmentHandles();
         DrawAddPointPreview();
         HandleAddPoint();
 
@@ -78,30 +80,167 @@ public class CableDrawerTool : EditorTool
     }
 
 
-    /// Draws position handles for each cable point in the Scene view.
-    private void DrawCableHandles()
+    private void DrawCablePointHandles()
     {
         for (int i = 0; i < cable.Points.Count; i++)
         {
-
-
-            EditorGUI.BeginChangeCheck();
             Vector3 worldPoint = cable.transform.TransformPoint(cable.Points[i].position);
             Vector3 newWorldPoint = Handles.FreeMoveHandle(
                 worldPoint,
-                HandleUtility.GetHandleSize(worldPoint) * 0.2f,
+                HandleUtility.GetHandleSize(worldPoint) * 0.1f,
                 Vector3.zero,
                 Handles.SphereHandleCap
             );
             Handles.Label(worldPoint + Vector3.up * 0.1f, $"#{i}", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 12, normal = { textColor = Color.black } });
+        }
+    }
+
+    private void DrawCableSegmentHandles()
+    {
+        if (cable.Points.Count < 2)
+            return;
+
+        List<(Vector3 normal, Vector3 forward, Vector3 side)> segmentInfo = new List<(Vector3, Vector3, Vector3)>();
+
+        for (int i = 0; i < cable.Points.Count - 1; i++)
+        {
+            var p0 = cable.Points[i];
+            var p1 = cable.Points[i + 1];
+
+            Vector3 worldP0 = cable.transform.TransformPoint(p0.position);
+            Vector3 worldP1 = cable.transform.TransformPoint(p1.position);
+
+            Vector3 normal = p0.normal;
+            Vector3 forward = (worldP1 - worldP0).normalized;
+            Vector3 side = Vector3.Cross(normal, forward).normalized;
+            segmentInfo.Add((normal, forward, side));
+        }
+
+        for (int i = 0; i < cable.Points.Count - 1; i++)
+        {
+            var p0 = cable.Points[i];
+            var p1 = cable.Points[i + 1];
+
+            Vector3 worldP0 = cable.transform.TransformPoint(p0.position);
+            Vector3 worldP1 = cable.transform.TransformPoint(p1.position);
+
+            Vector3 normal = segmentInfo[i].normal;
+            Vector3 forward = segmentInfo[i].forward;
+            Vector3 side = segmentInfo[i].side;
+            Vector3 mid = (worldP0 + worldP1) * 0.5f;
+
+            EditorGUI.BeginChangeCheck();
+            Vector3 newMid = Handles.Slider2D(
+                mid,
+                normal,
+                forward,
+                side,
+                HandleUtility.GetHandleSize(mid) * 0.1f,
+                Handles.CircleHandleCap,
+                0f
+            );
+
             if (EditorGUI.EndChangeCheck())
             {
-                Undo.RecordObject(cable, "Move Cable Point");
-                cable.Points[i] = new Cable.CablePoint { position = cable.transform.InverseTransformPoint(newWorldPoint), normal = cable.Points[i].normal };
+                Undo.RecordObject(cable, "Move Cable Segment");
+                Vector3 offset = newMid - mid;
+                offset -= Vector3.Project(offset, forward);
+
+
+                Debug.Log($"Moving segment {i} from {mid} to {newMid}, offset: {offset}");
+
+                List<int> indicesToOffset = new();
+                for (int prevIndex = i; prevIndex >= 0; prevIndex--)
+                {
+                    // If we are not checking the last point, we need to check if the it's aligned with the previous segment
+                    if (prevIndex > 0)
+                    {
+                        Vector3 prevSide = segmentInfo[prevIndex].side;
+                        if (AbsVector(prevSide) != AbsVector(side))
+                        {
+                            break;
+                        }
+                    }
+                    indicesToOffset.Add(prevIndex);
+                }
+                for (int nextIndex = i + 1; nextIndex < cable.Points.Count; nextIndex++)
+                {
+                    indicesToOffset.Add(nextIndex);
+                    // If we are not checking the last point, we need to check if the it's aligned with the previous segment
+                    if (nextIndex < cable.Points.Count - 1)
+                    {
+                        Vector3 nextSide = segmentInfo[nextIndex].side;
+                        if (AbsVector(nextSide) != AbsVector(side))
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                foreach (int indexToOffset in indicesToOffset)
+                {
+                    Vector3 newWorldPoint = cable.transform.TransformPoint(cable.Points[indexToOffset].position) + offset * 0.5f;
+                    cable.Points[indexToOffset] = new Cable.CablePoint
+                    {
+                        position = cable.transform.InverseTransformPoint(newWorldPoint),
+                        normal = cable.Points[indexToOffset].normal
+                    };
+                }
+
+                // cable.Points[i] = new Cable.CablePoint
+                // {
+                //     position = cable.transform.InverseTransformPoint(newWorldP0),
+                //     normal = p0.normal
+                // };
+                // cable.Points[i + 1] = new Cable.CablePoint
+                // {
+                //     position = cable.transform.InverseTransformPoint(newWorldP1),
+                //     normal = p1.normal
+                // };
+
+
+                // splitting the cables - works like crap 
+
+                // Cable.CablePoint? prevPoint = (i > 0) ? cable.Points[i - 1] : null;
+                // if (prevPoint.HasValue)
+                // {
+                //     Vector3 prevWorldP = cable.transform.TransformPoint(prevPoint.Value.position);
+                //     Vector3 prevForward = newWorldP0 - prevWorldP;
+                //     prevForward.Normalize();
+                //     if (Math.Abs(Vector3.Dot(prevForward, forward)) > 0.001f)
+                //     {
+                //         pendingInsertion = pendingInsertion == null ? (i, new Cable.CablePoint
+                //         {
+                //             position = p0.position,
+                //             normal = p0.normal
+                //         }) : pendingInsertion;
+                //         Debug.Log($"Inserting segment {i} from point {p0.position} with normal {p0.normal}");
+                //     }
+                //     else
+                //     {
+                //         Debug.Log($"No insertion needed at index {i}.");
+                //     }
+                // }
+
                 cable.GenerateMesh();
                 EditorUtility.SetDirty(cable);
             }
         }
+
+        // Handle pending insertion
+
+        // if (pendingInsertion.HasValue)
+        // {
+        //     Debug.Log("Waiting to release, inserting pending point.");
+        //     if (Event.current.type == EventType.MouseUp && Event.current.button == 0)
+        //     {
+        //         Debug.Log("Mouse released, inserting pending point.");
+        //         var (index, point) = pendingInsertion.Value;
+        //         cable.Points.Insert(index, point);
+        //         Debug.Log($"Inserted new point at index {index} on mouse release.");
+        //         pendingInsertion = null;
+        //     }
+        // }
     }
 
     private void DrawAddPointPreview()
@@ -126,7 +265,7 @@ public class CableDrawerTool : EditorTool
             {
                 Handles.DrawLine(cable.transform.TransformPoint(cable.Points.Last().position), hit.point);
             }
-            Handles.DrawWireDisc(hit.point, hit.normal, 0.1f);
+            Handles.DrawWireDisc(hit.point, hit.normal, HandleUtility.GetHandleSize(hit.point) * 0.2f);
         }
 
         // Debug.Log($"Hit Point: {hit.point}, Hit Normal: {hit.normal}");
@@ -140,7 +279,7 @@ public class CableDrawerTool : EditorTool
             {
                 Handles.DrawLine(cable.transform.TransformPoint(cable.Points.Last().position), adjustedPoint);
             }
-            Handles.DrawWireDisc(adjustedPoint, hit.normal, 0.1f);
+            Handles.DrawWireDisc(adjustedPoint, hit.normal, HandleUtility.GetHandleSize(adjustedPoint) * 0.2f);
         }
     }
 
@@ -192,6 +331,10 @@ public class CableDrawerTool : EditorTool
             return cable.transform.InverseTransformPoint(snappedPoint);
         }
         return cable.transform.InverseTransformPoint(targetPoint);
+    }
+    private Vector3 AbsVector(Vector3 v)
+    {
+        return new Vector3(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
     }
 
     private int GetLargestComponentIndex(Vector3 v)

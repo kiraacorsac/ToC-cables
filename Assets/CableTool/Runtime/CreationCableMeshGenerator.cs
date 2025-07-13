@@ -65,7 +65,7 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
         geometry.IncrementMeshIndex();
 
 
-        Debug.Log($"Generated {geometry.Vertices.Count} vertices and {geometry.Triangles.Values.Sum(list => list.Count)} triangles in {geometry.LastMeshIndex} meshes for cable '{name}'.");
+        // Debug.Log($"Generated {geometry.Vertices.Count} vertices and {geometry.Triangles.Values.Sum(list => list.Count)} triangles in {geometry.LastMeshIndex} meshes for cable '{name}'.");
         mesh.SetVertices(geometry.Vertices);
 
         foreach (var triangle in geometry.Triangles)
