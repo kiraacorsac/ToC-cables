@@ -1,6 +1,8 @@
 using UnityEditor;
 using UnityEditor.Overlays;
+using UnityEngine;
 using UnityEngine.UIElements;
+
 [Overlay(typeof(SceneView), "Cable Tool Overlay")]
 public class CableOverlay : Overlay
 {
@@ -35,6 +37,31 @@ public class CableOverlay : Overlay
         };
         root.Add(clearCableButton);
 
+        var forceRecalculateAllButton = new Button(ForceRecalculateAll)
+        {
+            text = "Recalculate Cable Extensions",
+            tooltip = "Force all cables to recalculate cable extensions in the scene."
+        };
+
+        root.Add(forceRecalculateAllButton);
+
+        var separator = new VisualElement
+        {
+            style =
+            {
+                height = 1,
+                backgroundColor = Color.gray,
+                marginTop = 10,
+                marginBottom = 10
+            }
+        };
+        root.Add(separator);
+
+        var label = new Label("Shift - allow height difference\nCtrl - alt snap axis");
+        label.style.marginTop = 10;
+        label.style.unityTextAlign = TextAnchor.MiddleCenter;
+        root.Add(label);
+
         return root;
     }
 
@@ -64,9 +91,28 @@ public class CableOverlay : Overlay
     {
         WithSelectedCable(cable =>
         {
+            cable.UnregisterSelfFromExtends();
+            cable.RegisterSelfInExtends();
             cable.GenerateMesh();
         });
     }
+
+    private static void ForceRecalculateAll()
+    {
+        var cables = GameObject.FindObjectsOfType<Cable>();
+        foreach (var cable in cables)
+        {
+            cable.ClearObservers();
+        }
+
+        foreach (var cable in cables)
+        {
+            cable.UnregisterSelfFromExtends();
+            cable.RegisterSelfInExtends();
+            cable.GenerateMesh();
+        }
+    }
+
 
     private static void FlipCable()
     {

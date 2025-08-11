@@ -306,17 +306,29 @@ public class CableDrawerTool : EditorTool
         }
 
         // Debug.Log($"Hit Point: {hit.point}, Hit Normal: {hit.normal}");
+        var adjustedColor = Color.green;
+        var adjustedNormal = hit.normal;
+        var requestedPoint = hit.point;
+        var collidedCable = hit.collider.GetComponent<Cable>();
+        if (collidedCable != null)
+        {
+            adjustedColor = Color.blue;
+            Vector3 worldPoint = collidedCable.Points[0].position;
+            requestedPoint = collidedCable.transform.TransformPoint(worldPoint);
+            adjustedNormal = collidedCable.Points[0].normal;
+        }
 
         var adjustedPoint = cable.transform.TransformPoint(
-            ComputeNextPossiblePoint(hit.point, hit.normal, Event.current.shift)
+            ComputeNextPossibleGroundPoint(requestedPoint, hit.normal, Event.current.shift, Event.current.control)
         );
-        using (new Handles.DrawingScope(Color.green))
+
+        using (new Handles.DrawingScope(adjustedColor))
         {
             if (cable.Points.Count > 0)
             {
                 Handles.DrawLine(cable.transform.TransformPoint(cable.Points.Last().position), adjustedPoint);
             }
-            Handles.DrawWireDisc(adjustedPoint, hit.normal, HandleUtility.GetHandleSize(adjustedPoint) * 0.2f);
+            Handles.DrawWireDisc(adjustedPoint, adjustedNormal, HandleUtility.GetHandleSize(adjustedPoint) * 0.2f);
         }
     }
 
@@ -328,16 +340,28 @@ public class CableDrawerTool : EditorTool
             Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
             if (!Physics.Raycast(ray, out RaycastHit hit))
             {
+
                 Debug.LogWarning("No valid point hit to add to the cable.");
                 e.Use();
                 return;
             }
 
+            Debug.Log($"Hit Collider: {hit.collider.name}");
+            // if collider is a cable, we can add a special point
             Undo.RecordObject(cable, "Add Cable Point");
+            var newPosition = Vector3.zero;
+            var requestedPosition = hit.point;
+            var requestedNormal = hit.normal;
+            var collidedCable = hit.collider.GetComponent<Cable>();
+            if (collidedCable != null)
+            {
+                Debug.Log("Hit a Cable collider, aligning to it.");
+                // Align the new point to the cable's first point
+                requestedPosition = collidedCable.transform.TransformPoint(collidedCable.Points[0].position);
+                requestedNormal = collidedCable.Points[0].normal;
+            }
 
-            var newPosition = ComputeNextPossiblePoint(hit.point, hit.normal, Event.current.shift);
-            Debug.Log($"Adding new point at {newPosition} with normal {hit.normal}");
-
+            newPosition = ComputeNextPossibleGroundPoint(requestedPosition, requestedNormal, Event.current.shift, Event.current.control);
             if (cable.Points.Count > 2)
             {
                 Vector3 lastPoint = cable.transform.TransformPoint(cable.Points.Last().position);
@@ -356,6 +380,9 @@ public class CableDrawerTool : EditorTool
                 }
             }
 
+            Debug.Log($"Adding new point at {newPosition} with normal {hit.normal}");
+
+
             cable.Points.Add(new Cable.CablePoint
             {
                 position = newPosition,
@@ -367,7 +394,7 @@ public class CableDrawerTool : EditorTool
         }
     }
 
-    private Vector3 ComputeNextPossiblePoint(Vector3 targetPoint, Vector3 targetNormal, bool snapNormal)
+    private Vector3 ComputeNextPossibleGroundPoint(Vector3 targetPoint, Vector3 targetNormal, bool snapNormal, bool snapSecondAxis)
     {
 
         if (cable.Points.Count > 0)
@@ -377,6 +404,11 @@ public class CableDrawerTool : EditorTool
             Vector3 distance = lastPoint - targetPoint;
             // Debug.Log($"Last Point: {lastPoint}, Target Point: {targetPoint}, Distance: {distance}");
             int snapDirectionAxis = GetLargestComponentIndex(distance);
+            if (snapSecondAxis)
+            {
+                // snap to the second largest axis
+                snapDirectionAxis = GetSecondLargestComponentIndex(distance);
+            }
             // Debug.Log($"Snap Direction Axis: {snapDirectionAxis} - ({distance[snapDirectionAxis]})");
             Vector3 snappedPoint = lastPoint;
             snappedPoint[snapDirectionAxis] = targetPoint[snapDirectionAxis];
@@ -416,6 +448,15 @@ public class CableDrawerTool : EditorTool
             return 2; // Z
         }
     }
+
+    private int GetSecondLargestComponentIndex(Vector3 v)
+    {
+        int largestIndex = GetLargestComponentIndex(v);
+        float[] components = { Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z) };
+        components[largestIndex] = 0;
+        return GetLargestComponentIndex(new Vector3(components[0], components[1], components[2]));
+    }
+
     private void OnUndoRedo()
     {
         Debug.Log("Undo/Redo performed, regenerating cable mesh.");

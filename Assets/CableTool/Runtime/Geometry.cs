@@ -19,10 +19,9 @@ class Geometry
     }
 
 
-    public void AddVertex(Vector3 point, Vector2 uv = default)
+    public void AddVertex(Vector3 point)
     {
         Vertices.Add(point);
-        UVs.Add(uv);
     }
 
     public void AddTriangle(int indexA, int indexB, int indexC, int offset = 0, int meshIndex = -1)
@@ -41,6 +40,17 @@ class Geometry
         triangleList.Add(indexB + offset);
         triangleList.Add(indexC + offset);
     }
+
+    public void AddVertexUV(Vector2 uv)
+    {
+        UVs.Add(uv);
+    }
+
+    // public void AddTriangleUV(List<Vector2> uvs){
+    //     foreach(var uv in uvs){
+    //         UVs.Add(uv);
+    //     }
+    // }
 
     public void IncrementMeshIndex()
     {

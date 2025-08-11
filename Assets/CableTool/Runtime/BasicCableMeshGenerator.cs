@@ -11,7 +11,7 @@ public class BasicCableMeshGenerator : AbstractCableMeshGenerator
     private GameObject reminderTextObj;
 
 
-    override public void GenerateMesh(List<Cable.CablePoint> points)
+    override public void GenerateMesh(List<Cable.CablePoint> points, bool active, CableExtensionType extensionType)
     {
         Mesh mesh = new Mesh();
 

@@ -6,8 +6,9 @@ using Unity.VisualScripting.Dependencies.Sqlite;
 using UnityEngine;
 
 
-public enum CableMeshEnding
+public enum CableJunctionType
 {
+    Default,
     None,
     OrJunction,
     AndJunction,
@@ -16,11 +17,26 @@ public enum CableMeshEnding
     ConcaveJunction
 }
 
+public static class CableJunctionTypeExtensions
+{
+    public static CableJunctionType FromCableExtensionType(this CableJunctionType junctionType, CableExtensionType extensionType)
+    {
+        return extensionType switch
+        {
+            CableExtensionType.None => CableJunctionType.None,
+            CableExtensionType.Or => CableJunctionType.OrJunction,
+            CableExtensionType.And => CableJunctionType.AndJunction,
+            CableExtensionType.Passthrough => CableJunctionType.SimpleJunction,
+            _ => CableJunctionType.None
+        };
+    }
+}
+
 [Serializable]
 public class PointOverride
 {
     public int index;
-    public CableMeshEnding ending;
+    public CableJunctionType junctionType;
 }
 
 public class CreationCableMeshGenerator : AbstractCableMeshGenerator
@@ -30,21 +46,30 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
     public float width = 1f;
     public float height = 1f;
 
-    public CableMeshEnding startJunction = CableMeshEnding.None;
-    public CableMeshEnding endJunction = CableMeshEnding.None;
+    public CableJunctionType startJunction = CableJunctionType.Default;
 
     [SerializeField]
     public List<PointOverride> pointOverrides = new List<PointOverride>();
 
+    // This can be optimized if it becomes a performance issue
+    // we expect size of pointOverrides to be negligible in most cases
+    // private CableJunctionType getPointOverride(int index){
+    //     foreach (var override in pointOverrides){
+    //         if(override.index == index){
+    //             return override.junctionType;
+    //         }
+    //     }
+    //     return null;
+    // }
 
-    override public void GenerateMesh(List<Cable.CablePoint> points)
+    override public void GenerateMesh(List<Cable.CablePoint> points, bool active, CableExtensionType extensionType)
     {
         Mesh mesh = new Mesh();
 
 
         if (points.Count < 2)
         {
-            Debug.LogError("Not enough points to generate cable mesh for . At least 2 points are required.");
+            Debug.LogError("Not enough points to generate cable mesh. At least 2 points are required.");
             GetComponent<MeshFilter>().mesh = null;
             return;
         }
@@ -52,33 +77,46 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
 
         Geometry geometry = new Geometry();
 
-        GenerateSamePlaneSimpleJunctionMesh(points, geometry);
-        GenerateSegmentMesh(points, geometry);
-        GenerateConcavePlaneChangeJunctionMesh(points, geometry);
-        GenerateConvexPlaneChangeJunctionMesh(points, geometry);
+        GenerateConcavePlaneChangeJunctionMesh(points, active, geometry);
+        GenerateConvexPlaneChangeJunctionMesh(points, active, geometry);
+        GenerateSamePlaneSimpleJunctionMesh(points, active, geometry);
+
+        CableJunctionType junction = startJunction;
+        if (junction == CableJunctionType.Default){
+            junction = startJunction.FromCableExtensionType(extensionType);
+        }
+        GenerateStartJunctionMesh(points, active, junction, geometry);
 
         // GenerateLastJunctionMesh(points, geometry);
+
+        foreach (var vert in geometry.Vertices)
+        {
+            geometry.AddVertexUV(new Vector2(0f, 0f));
+        }   
+        GenerateSegmentMesh(points, active, geometry);
 
         geometry.IncrementMeshIndex();
 
 
         // Debug.Log($"Generated {geometry.Vertices.Count} vertices and {geometry.Triangles.Values.Sum(list => list.Count)} triangles in {geometry.LastMeshIndex} meshes for cable '{name}'.");
         mesh.SetVertices(geometry.Vertices);
+        mesh.SetUVs(0, geometry.UVs);
 
         foreach (var triangle in geometry.Triangles)
         {
             mesh.SetTriangles(triangle.Value, triangle.Key);
         }
-        // mesh.SetUVs(0, uvs);
+
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
-    private void GenerateSamePlaneSimpleJunctionMesh(List<Cable.CablePoint> points, Geometry geometry)
+    private void GenerateSamePlaneSimpleJunctionMesh(List<Cable.CablePoint> points, bool active, Geometry geometry)
     {
-        if (points.Count < 3)
+        if (points.Count < 2)
         {
+            Debug.LogError("Not enough points to generate same plane simple junction mesh. At least 2 points are required.");
             return;
         }
 
@@ -89,7 +127,7 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
                 Vector3 forward = (points[i].position - points[i - 1].position).normalized;
                 int vertexOffset = geometry.Vertices.Count;
 
-                foreach (var vertex in GetSamePlaneSimpleJunctionVertices(points[i].position, points[i].normal, forward))
+                foreach (var (vertex, uv) in GetSamePlaneSimpleJunctionVertices(points[i].position, points[i].normal, forward))
                 {
                     geometry.AddVertex(vertex);
                 }
@@ -102,7 +140,35 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
         }
     }
 
-    private void GenerateConcavePlaneChangeJunctionMesh(List<Cable.CablePoint> points, Geometry geometry)
+    private void GenerateStartJunctionMesh(List<Cable.CablePoint> points, bool active, CableJunctionType type, Geometry geometry)
+    {
+        if(type == CableJunctionType.None) {
+            return;
+        }
+
+        if(points.Count < 2)
+        {
+            Debug.LogError("Not enough points to generate logical junction mesh. At least 2 points are required.");
+            return;
+        }
+
+        Vector3 forward = (points[1].position - points[0].position).normalized;
+        
+        int vertexOffset = geometry.Vertices.Count;
+
+        foreach (var (vertex, uv) in GetSamePlaneSimpleJunctionVertices(points[0].position, points[0].normal, forward))
+        {
+            geometry.AddVertex(vertex);
+        }
+
+        foreach (var triangle in GetSamePlaneSimpleJunctionTriangles())
+        {
+            geometry.AddTriangle(triangle.x, triangle.y, triangle.z, vertexOffset);
+        }
+
+    }
+
+    private void GenerateConcavePlaneChangeJunctionMesh(List<Cable.CablePoint> points, bool active, Geometry geometry)
     {
         if (points.Count < 3)
         {
@@ -111,7 +177,6 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
 
         for (int i = 1; i < points.Count - 1; i++)
         {
-
             Vector3 forward = (points[i].position - points[i - 1].position).normalized;
 
             // Debug.Log($"Checking point {i} at position {points[i].position} with normal {points[i].normal} and forward {forward}, dot {Vector3.Dot(forward, points[i].normal)}");
@@ -135,7 +200,7 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
         }
     }
 
-    private void GenerateConvexPlaneChangeJunctionMesh(List<Cable.CablePoint> points, Geometry geometry)
+    private void GenerateConvexPlaneChangeJunctionMesh(List<Cable.CablePoint> points, bool active, Geometry geometry)
     {
         if (points.Count < 3)
         {
@@ -167,42 +232,39 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
         }
     }
 
-    private void GenerateSegmentMesh(List<Cable.CablePoint> points, Geometry geometry)
+    private void GenerateSegmentMesh(List<Cable.CablePoint> points, bool active, Geometry geometry)
     {
-        for (int i = 0; i < points.Count; i++)
+        for (int i = 0; i < points.Count - 1; i++)
         {
 
-            Vector3 forward;
-            if (i < points.Count - 1)
-            {
-                forward = (points[i + 1].position - points[i].position).normalized;
-            }
-            else
-            {
-                forward = (points[i].position - points[i - 1].position).normalized;
-            }
+            Vector3 forward = (points[i + 1].position - points[i].position);
+            
             int vertexOffset = geometry.Vertices.Count;
 
-            foreach (var vertex in GetSegmentCrosscutVertices(points[i].position, points[i].normal, forward))
+            float activeUvOffsetX = active ? 0.135f : 0.0f;
+
+            foreach (var (vertex, uvs) in GetSegmentCrosscutVertices(points[i].position, points[i].normal, forward.normalized, new Vector2(activeUvOffsetX, 0.0f)))
             {
                 geometry.AddVertex(vertex);
+                geometry.AddVertexUV(uvs);
             }
-            if (i < points.Count - 1)
+
+            float segmentLength = forward.magnitude;
+            // take the previous point's normal as the "up" vector, so we don't get twisting
+            foreach (var (vertex, uvs) in GetSegmentCrosscutVertices(points[i + 1].position, points[i].normal, forward.normalized, new Vector2(activeUvOffsetX, segmentLength)))
             {
-                // take the previous point's normal as the "up" vector, so we don't get twisting
-                foreach (var vertex in GetSegmentCrosscutVertices(points[i + 1].position, points[i].normal, forward))
-                {
-                    geometry.AddVertex(vertex);
-                }
-                foreach (var triangle in GetSegmentTriangles())
-                {
-                    geometry.AddTriangle(triangle.x, triangle.y, triangle.z, vertexOffset);
-                }
+                geometry.AddVertex(vertex);
+                geometry.AddVertexUV(uvs);
             }
+            foreach (var triangle in GetSegmentTriangles())
+            {
+                geometry.AddTriangle(triangle.x, triangle.y, triangle.z, vertexOffset);
+            }
+            
         }
     }
 
-    private List<Vector3> GetSegmentCrosscutVertices(Vector3 point, Vector3 normal, Vector3 forward)
+    private List<(Vector3, Vector2)> GetSegmentCrosscutVertices(Vector3 point, Vector3 normal, Vector3 forward, Vector2 uvOffset)
     {
         Vector3 up = normal.normalized;
         Vector3 right = Vector3.Cross(forward, up).normalized;
@@ -212,13 +274,25 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
             localUp = -localUp;
         }
 
-        var vertices = new List<Vector3>
+        var vertices = new List<(Vector3, Vector2)>
         {
             // see concept blend file for the source of magic numbers
-            point + 0.052868f * width * right,
-            point + 0.031255f * width * right + 0.027186f * height * localUp,
-            point + 0.031255f * width * -right + 0.027186f * height * localUp,
-            point + 0.052868f * width * -right
+            
+            // first UV offest is width - we need to shift UVs if cable is active
+            // second UV offset is length of the segment
+
+            // 0, 6
+            (point + 0.052868f * width * right, new Vector2(0f, 0f) + uvOffset * new Vector2(0, 1)),
+            // 1, 7
+            (point + 0.031255f * width * right + 0.027186f * height * localUp, new Vector2(0.034764f, 0f) + uvOffset * new Vector2(0, 1)),
+            // 2, 8
+            (point + 0.031255f * width * right + 0.027186f * height * localUp, new Vector2(0.034764f, 0f) + uvOffset * new Vector2(1, 1)),
+            // 3, 9
+            (point + 0.031255f * width * -right + 0.027186f * height * localUp, new Vector2(0.097269f, 0f) + uvOffset * new Vector2(1, 1)),
+            // 4, 10
+            (point + 0.031255f * width * -right + 0.027186f * height * localUp, new Vector2(0.097269f, 0f) + uvOffset * new Vector2(0, 1)),
+            // 5, 11
+            (point + 0.052868f * width * -right, new Vector2(0.131997f, 0f) + uvOffset * new Vector2(0, 1)),
         };
 
         return vertices;
@@ -228,18 +302,26 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
     {
         return new List<Vector3Int>
         {
-            new Vector3Int(0, 4, 1),
-            new Vector3Int(1, 4, 5),
-            new Vector3Int(1, 5, 2),
-            new Vector3Int(2, 5, 6),
-            new Vector3Int(2, 6, 3),
-            new Vector3Int(3, 6, 7),
+            new Vector3Int(0, 6, 1),
+            new Vector3Int(1, 6, 7),
+
+            new Vector3Int(2, 9, 3),
+            new Vector3Int(2, 8, 9),
+
+
+            new Vector3Int(4, 11, 5),
+            new Vector3Int(4, 10, 11)
+
+            // new Vector3Int(1, 7, 2),
+            // new Vector3Int(2, 7, 9),
+            // new Vector3Int(2, 9, 5),
+            // new Vector3Int(5, 9, 11),
         };
     }
 
     # region Same Plane Simple Junction
 
-    private List<Vector3> GetSamePlaneSimpleJunctionVertices(Vector3 point, Vector3 normal, Vector3 forward)
+    private List<(Vector3, Vector2)> GetSamePlaneSimpleJunctionVertices(Vector3 point, Vector3 normal, Vector3 forward)
     {
         forward = forward.normalized;
         Vector3 up = normal.normalized;
@@ -250,20 +332,45 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
             localUp = -localUp;
         }
 
-        var vertices = new List<Vector3>
+        var vertices = new List<(Vector3, Vector2)>
         {
             // see concept blend file for the source of magic numbers
             //bottom
-            point + 0.071789f * width * right + 0.071789f * forward * width,
-            point + 0.071789f * width * right + 0.071789f * -forward * width,
-            point + 0.071789f * -width * right + 0.071789f * -forward * width,
-            point + 0.071789f * -width * right + 0.071789f * forward * width,
+            (
+                point + 0.071789f * width * right + 0.071789f * forward * width,
+                new Vector2(0f, 1f)
+            ),
+            (
+                point + 0.071789f * width * right + 0.071789f * -forward * width, 
+                new Vector2(0f, 0f)
+            ),
+            (
+                point + 0.071789f * -width * right + 0.071789f * -forward * width, 
+                new Vector2(0.131997f, 0f)
+            ),
+            (
+                point + 0.071789f * -width * right + 0.071789f * forward * width, 
+                new Vector2(0.131997f, 1f)
+            ),
             //top
-            point + 0.041164f * width * right + 0.041164f * forward * width + 0.038168f * height * localUp,
-            point + 0.041164f * width * right + 0.041164f * -forward * width + 0.038168f * height * localUp,
-            point + 0.041164f * -width * right + 0.041164f * -forward * width + 0.038168f * height * localUp,
-            point + 0.041164f * -width * right + 0.041164f * forward * width + 0.038168f * height * localUp
+            (
+                point + 0.041164f * width * right + 0.041164f * forward * width + 0.038168f * height * localUp, 
+                new Vector2(0.034764f, 1f)
+            ),
+            (
+                point + 0.041164f * width * right + 0.041164f * -forward * width + 0.038168f * height * localUp, 
+                new Vector2(0.034764f, 0f)
+            ),
+            (   
+                point + 0.041164f * -width * right + 0.041164f * -forward * width + 0.038168f * height * localUp, 
+                new Vector2(0.097269f, 0f)
+            ),
+            (   
+                point + 0.041164f * -width * right + 0.041164f * forward * width + 0.038168f * height * localUp, 
+                new Vector2(0.097269f, 1f)
+            )
         };
+
         return vertices;
     }
 
@@ -374,7 +481,7 @@ public class CreationCableMeshGenerator : AbstractCableMeshGenerator
         }
         localUp = -localUp;
 
-        // forward = -forward;
+        // forward = -forward
 
         var vertices = new List<Vector3>
         {
