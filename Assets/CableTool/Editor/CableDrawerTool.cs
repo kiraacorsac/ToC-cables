@@ -310,12 +310,22 @@ public class CableDrawerTool : EditorTool
         var adjustedNormal = hit.normal;
         var requestedPoint = hit.point;
         var collidedCable = hit.collider.GetComponent<Cable>();
-        if (collidedCable != null)
+        if (collidedCable != null && collidedCable.Points.Count > 0)
         {
-            adjustedColor = Color.blue;
-            Vector3 worldPoint = collidedCable.Points[0].position;
-            requestedPoint = collidedCable.transform.TransformPoint(worldPoint);
-            adjustedNormal = collidedCable.Points[0].normal;
+            if (hit.collider == collidedCable.firstPointCollider)
+            {
+                adjustedColor = Color.red;
+                Vector3 worldPoint = collidedCable.Points[0].position;
+                requestedPoint = collidedCable.transform.TransformPoint(worldPoint);
+                adjustedNormal = collidedCable.Points[0].normal;
+            }
+            else if (hit.collider == collidedCable.lastPointCollider)
+            {
+                adjustedColor = Color.blue;
+                Vector3 worldPoint = collidedCable.Points.Last().position;
+                requestedPoint = collidedCable.transform.TransformPoint(worldPoint);
+                adjustedNormal = collidedCable.Points.Last().normal;
+            }
         }
 
         var adjustedPoint = cable.transform.TransformPoint(
@@ -349,21 +359,28 @@ public class CableDrawerTool : EditorTool
             Debug.Log($"Hit Collider: {hit.collider.name}");
             // if collider is a cable, we can add a special point
             Undo.RecordObject(cable, "Add Cable Point");
-            var newPosition = Vector3.zero;
             var requestedPosition = hit.point;
             var requestedNormal = hit.normal;
             var collidedCable = hit.collider.GetComponent<Cable>();
             if (collidedCable != null)
             {
-                Debug.Log("Hit a Cable collider, aligning to it.");
-                // Align the new point to the cable's first point
-                requestedPosition = collidedCable.transform.TransformPoint(collidedCable.Points[0].position);
-                requestedNormal = collidedCable.Points[0].normal;
+                // Align the new point to the cable's first or last point
+                if (hit.collider == collidedCable.firstPointCollider)
+                {
+                    requestedPosition = collidedCable.transform.TransformPoint(collidedCable.Points[0].position);
+                    requestedNormal = collidedCable.Points[0].normal;
+                }
+                else if (hit.collider == collidedCable.lastPointCollider)
+                {
+                    requestedPosition = collidedCable.transform.TransformPoint(collidedCable.Points.Last().position);
+                    requestedNormal = collidedCable.Points.Last().normal;
+                }
             }
 
-            newPosition = ComputeNextPossibleGroundPoint(requestedPosition, requestedNormal, Event.current.shift, Event.current.control);
-            if (cable.Points.Count > 2)
+            var newPosition = ComputeNextPossibleGroundPoint(requestedPosition, requestedNormal, Event.current.shift, Event.current.control);
+            if (cable.Points.Count > 1)
             {
+                //if last point is the same direction as the previous segment, remove the last point so we don't have multiple points in the same direction
                 Vector3 lastPoint = cable.transform.TransformPoint(cable.Points.Last().position);
                 Vector3 secondLastPoint = cable.transform.TransformPoint(cable.Points[cable.Points.Count - 2].position);
                 Vector3 newWorldPosition = cable.transform.TransformPoint(newPosition);
@@ -374,10 +391,11 @@ public class CableDrawerTool : EditorTool
                 Debug.Log($"Previous Forward: {prevForward}, New Forward: {forward}");
                 if (Mathf.Abs(Math.Abs(Vector3.Dot(forward, prevForward)) - 1.0f) < 1e-4f)
                 {
-                    //last point is the same direction as the previous segment, remove the last point so we don't have multiple points in the same direction
                     Debug.Log("Last point is in the same direction as the previous segment, removing last point.");
                     cable.Points.RemoveAt(cable.Points.Count - 1);
                 }
+
+
             }
 
             Debug.Log($"Adding new point at {newPosition} with normal {hit.normal}");
@@ -386,7 +404,7 @@ public class CableDrawerTool : EditorTool
             cable.Points.Add(new Cable.CablePoint
             {
                 position = newPosition,
-                normal = hit.normal
+                normal = requestedNormal
             });
             cable.GenerateMesh();
             EditorUtility.SetDirty(cable);

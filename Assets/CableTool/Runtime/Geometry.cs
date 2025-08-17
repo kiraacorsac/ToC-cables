@@ -46,11 +46,6 @@ class Geometry
         UVs.Add(uv);
     }
 
-    // public void AddTriangleUV(List<Vector2> uvs){
-    //     foreach(var uv in uvs){
-    //         UVs.Add(uv);
-    //     }
-    // }
 
     public void IncrementMeshIndex()
     {

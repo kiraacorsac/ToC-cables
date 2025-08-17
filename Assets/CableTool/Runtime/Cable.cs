@@ -1,7 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
+
+public enum CableColliderType { First, Last }
+
+public class CableColliderMarker : MonoBehaviour
+{
+    public CableColliderType type;
+}
 
 public enum CableExtensionType
 {
@@ -22,7 +30,12 @@ public enum CableExtensionType
 }
 
 [RequireComponent(typeof(AbstractCableMeshGenerator))]
+// This is a stupid hack. Both colliders should be BoxColliders 
+// but unity doesn't allow requiring multiple components of the same type
+// nor subclassing BoxColliders :'D
+// furthermore, this messes up if one tries to add another collider to the cable
 [RequireComponent(typeof(BoxCollider))]
+[RequireComponent(typeof(SphereCollider))]
 public class Cable : MonoBehaviour, ICableObserver
 {
     // This has custom editor in CableEditor.cs, due to IsActive shenenigans
@@ -46,9 +59,12 @@ public class Cable : MonoBehaviour, ICableObserver
     [HideInInspector]
     public List<ICableObserver> observers = new();
 
-    private bool isActive;
 
-    private BoxCollider firstPointCollider;
+    [HideInInspector]
+    public BoxCollider firstPointCollider;
+    [HideInInspector]
+    public SphereCollider lastPointCollider; // should be a BoxCollider, see comment on Cable
+    private bool isActive;
 
     public bool IsActive
     {
@@ -212,10 +228,10 @@ public class Cable : MonoBehaviour, ICableObserver
         OnCableActiveStateChanged();
         AbstractCableMeshGenerator meshGenerator = GetComponent<AbstractCableMeshGenerator>();
         meshGenerator.GenerateMesh(Points, IsActive, extensionType);
-        UpdateFirstPointCollider();
+        UpdateCableColliders();
     }
 
-    private void UpdateFirstPointCollider()
+    private void UpdateCableColliders()
     {
 
         if (firstPointCollider == null)
@@ -223,10 +239,17 @@ public class Cable : MonoBehaviour, ICableObserver
             firstPointCollider = GetComponent<BoxCollider>();
         }
 
+        if (lastPointCollider == null)
+        {
+            lastPointCollider = GetComponent<SphereCollider>();
+        }
+
         if (Points.Count == 0)
         {
             firstPointCollider.size = Vector3.zero;
             firstPointCollider.enabled = false;
+            lastPointCollider.radius = 0f;
+            lastPointCollider.enabled = false;
             return;
         }
 
@@ -236,5 +259,12 @@ public class Cable : MonoBehaviour, ICableObserver
         firstPointCollider.isTrigger = true;
         firstPointCollider.size = new Vector3(0.1f, 0.1f, 0.1f);
         firstPointCollider.center = firstPoint;
+
+        var lastPoint = Points.Last().position;
+        lastPointCollider.enabled = true;
+        lastPointCollider.isTrigger = true;
+        // smaller collider for the last point to avoid overlaps - first point is usually more important
+        lastPointCollider.radius = 0.03f;
+        lastPointCollider.center = lastPoint;
     }
 }
